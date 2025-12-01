@@ -17,7 +17,7 @@ on:
         type: choice
         description: EnvironmentPath
         options:
-        - Infrastrucutre
+        - Infra
 permissions:
   contents: read
   id-token: write
@@ -28,8 +28,6 @@ env:
   ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
   ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
   ARM_USE_AZUREAD: true
-
-permissions: read-all
 
 jobs:
   terraform:
