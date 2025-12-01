@@ -1,44 +1,40 @@
-name: Prod_Infra
+name: Azure Infra
 on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
-   inputs:
+    inputs:
       environment:
         type: choice
         description: Environment
         options:
-        - production
+        - dev
       environmentPath:
         type: choice
         description: EnvironmentPath
         options:
-        - environments\prod\ej-IDAM-PKI-prod\Test_Server
-        - environments\prod\ej-IDAM-PKI-prod\AMI_Backup
-        - environments\prod\ej-IDAM-PKI-prod\ALB 
-        - environments\prod\ej-IDAM-PKI-prod\Infra
-        - environments\prod\ej-IDAM-PKI-prod\CloudHSM
-        - environments\prod\ej-IDAM-PKI-prod\DR_RCA_Server
-      terraform_operation:
-        description: "Terraform operation: plan, apply, destroy"
-        required: true
-        default: "plan"
-        type: choice
-        options:
-          - plan
-          - apply
-          - destroy
-      terraformapply:
-        type: choice
-        description: Terraform Apply
-        options:
-        - no
-        - yes
-  
+        - Infrastrucutre
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+env:
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  ARM_USE_AZUREAD: true
+
 permissions: read-all
 
 jobs:
   terraform:
-    name: 'Prod_Infra'
-    runs-on:  ${{ vars.RUNNER_NAME }}
+    name: 'Azure_Infra'
+    runs-on:  ubuntu-latest
     environment:  ${{ github.event.inputs.environment }}
     permissions:
       contents: read
@@ -50,51 +46,30 @@ jobs:
         shell: bash
 
     steps:
-    # Checkout the repository to the GitHub Actions runner
-    - name: Checkout
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v2
 
-    - name: Configure AWS Credentials
-      uses: easyjet-dev/reusable-workflows/.github/actions/configure-aws-credentials@main
-      with:
-        aws-region: ${{ vars.Region }}
-        role-to-assume: ${{ vars.PKI_PROD_ACCOUNT_ROLEFORTERRAFORM }} 
-        role-to-assume-for-oidc:  ${{ vars.PKI_PROD_ACCOUNT_GHOIDCROLE }}  
-        role-session-name: ${{ vars.PKI_PROD_ACCOUNT_NAME }}
-        use-oicd-auth: 'true'
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+      
+      - name: Terraform Init
+        id: init
+        run: terraform init
+      
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate -no-color
+      
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -no-color
+        continue-on-error: true
 
-    # Install the latest version of Terraform CLI and configure the Terraform CLI configuration file with a Terraform Cloud user API token
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v1
-
-    # Initialize a new or existing Terraform working directory by creating initial files, loading any remote state, downloading modules, etc.
+      - name: Terraform Apply - Prod
+        run: terraform apply -auto-approve -input=false
     
-    - name: Terraform Init
-      id: init
-      run: terraform init
-     
-    - name: Terraform Validate
-      id: validate
-      run: terraform validate -no-color
-     
-    - name: Terraform Plan
-      id: plan
-      run: terraform plan -no-color
-      continue-on-error: true
+      - name: Terraform Destroy Plan
+        run: terraform plan -destroy
 
-    #- name: Terraform unlock
-    #  id: unlock
-    #  run: terraform force-unlock -force 749f2c9e-b8a0-7927-2533-4cd3817e4dd4
-
-    - name: Terraform Apply - Prod
-      if:  ( github.event.inputs.terraform_operation == 'apply'  &&  github.event.inputs.terraformapply == 'true' )
-      run: terraform apply -auto-approve -input=false
-   
-    - name: Terraform Destroy Plan
-      if:  (github.event.inputs.terraform_operation == 'destroy'  &&  github.event.inputs.terraformapply == 'false' ) 
-
-      run: terraform plan -destroy
-
-    - name: Terraform Destroy
-      if:  (github.event.inputs.terraform_operation == 'destroy'  &&  github.event.inputs.terraformapply == 'true' ) 
-      run: terraform destroy --auto-approve  -input=false
+      - name: Terraform Destroy
+        run: terraform destroy --auto-approve  -input=false
